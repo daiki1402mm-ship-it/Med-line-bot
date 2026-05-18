@@ -132,7 +132,6 @@ def handle_postback(event):
             line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"✅ 更新完了！"))
         except: pass
 
-
 # --- 2. メインメッセージ処理 ---
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
@@ -156,7 +155,7 @@ def handle_message(event):
     if len(lines) == 1:
         line0 = lines[0].strip()
         
-        # 💡復活：試験のカウントダウン確認機能
+        # 試験のカウントダウン確認機能
         if "テスト" in line0 or "試験" in line0 or "CBT" in line0:
             try:
                 with get_db_connection() as conn:
@@ -403,14 +402,14 @@ def handle_message(event):
                             replies.append(f"💰 単発登録! ({once_match.group(1)}円)")
                             continue
 
-                        # 💡新規追加：最強の試験抽出フィルター
-                        m_exam = re.search(r'^(.+?)\s*試験(?:(?:\s+|場所[:：])(.*))?$', line)
+                        # 💡修正箇所：正しい位置（行ごとの処理ループの中）に配置！
+                        m_exam = re.search(r'(.+?)\s*試験(?:(?:\s+|場所[:：])(.*))?$', line)
                         if m_exam:
                             subject = m_exam.group(1).strip()
-                            location = m_exam.group(2).strip() if m_exam.group(2) else ""
+                            location = (m_exam.group(2) or "").strip()
                             cur.execute("INSERT INTO exams (exam_date, subject_name, location) VALUES (%s, %s, %s)", (t_date.isoformat(), subject, location))
                             
-                            loc_text = f" (場所: {location})" if location else ""
+                            loc_text = f"\n📍場所: {location}" if location else ""
                             replies.append(f"🎓 {t_date.strftime('%m/%d')}の試験「{subject}」を登録したよ！{loc_text}")
                             continue
 
