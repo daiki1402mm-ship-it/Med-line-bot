@@ -218,7 +218,7 @@ def handle_message(event):
                 return line_bot_api.reply_message(event.reply_token, TextSendMessage(text=f"予定確認エラー: {e}"))
 
         if "テンプレ" in line0 or "入力" in line0:
-            return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📋 テンプレ:\n水曜 4限 眼科 追加\n明日 1限 提出物 リマインド 1日前\n明日の予定 削除\n5/20 泌 尿 器 科 試験 場所:第1講義室"))
+            return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="📋 テンプレ:\n水曜 4限 眼科 追加\n明日 1限 提出物 リマインド 1日前\n明日の予定 削除\n5/20 泌尿器科 試験 場所:第1講義室"))
         
         if "ゆめちゃん" in line0:
             return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="ゆめちゃんとの時間はしっかり確保してね！\n試験 ＞ 部活 ＞ バイト の優先順位でスケジュール管理していこう！"))
@@ -402,14 +402,21 @@ def handle_message(event):
                             replies.append(f"💰 単発登録! ({once_match.group(1)}円)")
                             continue
 
-                        # 💡修正箇所：正しい位置（行ごとの処理ループの中）に配置！
-                        m_exam = re.search(r'(.+?)\s*試験(?:(?:\s+|場所[:：])(.*))?$', line)
-                        if m_exam:
-                            subject = m_exam.group(1).strip()
-                            location = (m_exam.group(2) or "").strip()
+                        # 💡究極の試験抽出フィルター（正規表現の壁を撤廃し、"試験"という文字で真っ二つに割る）
+                        if "試験" in line and "追加" not in line and "削除" not in line:
+                            parts = line.split("試験", 1)
+                            subject = parts[0].strip()
+                            location = parts[1].strip()
+                            
+                            # 「場所:」という文字があれば綺麗に消す
+                            location = re.sub(r'^場所[:：]\s*', '', location).strip()
+                            
+                            if not subject:
+                                subject = "試験"
+
                             cur.execute("INSERT INTO exams (exam_date, subject_name, location) VALUES (%s, %s, %s)", (t_date.isoformat(), subject, location))
                             
-                            loc_text = f"\n📍場所: {location}" if location else ""
+                            loc_text = f" (場所: {location})" if location else ""
                             replies.append(f"🎓 {t_date.strftime('%m/%d')}の試験「{subject}」を登録したよ！{loc_text}")
                             continue
 
