@@ -8,16 +8,35 @@ from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage, PostbackEvent
 from datetime import datetime, date, timedelta
 import pytz
-from utils import get_db_connection, parse_date, calculate_salary
 
 app = Flask(__name__)
 
 line_bot_api = LineBotApi(os.environ.get('LINE_CHANNEL_ACCESS_TOKEN'))
 handler = WebhookHandler(os.environ.get('LINE_CHANNEL_SECRET'))
 
-# 💡【特注フィルター】utilsのparse_dateが「5月」を「月曜日」と誤認するのを完全に防ぐ
+# 💡【重要修正】外部ファイル(utils.py)への依存を完全に無くし、すべて内蔵しました！
+def get_db_connection():
+    return psycopg2.connect(os.environ.get('SUPABASE_URI'))
+
+def calculate_salary(start_time_str, end_time_str, hourly_wage, rest_min=0):
+    try:
+        fmt = '%H:%M'
+        start = datetime.strptime(start_time_str, fmt)
+        end = datetime.strptime(end_time_str, fmt)
+        if end < start:
+            end += timedelta(days=1)
+        work_minutes = (end - start).seconds / 60 - rest_min
+        if work_minutes < 0: work_minutes = 0
+        return int((work_minutes / 60) * hourly_wage), work_minutes
+    except:
+        return 0, 0
+
 def safe_parse_date(text, default_date):
     if not text: return default_date
+    text = text.strip()
+    if text == "今日": return default_date
+    if text == "明日": return default_date + timedelta(days=1)
+    if text == "明後日": return default_date + timedelta(days=2)
     
     m_exact = re.search(r'(?<!\d)(\d{1,2})[/月](\d{1,2})日?', text)
     if m_exact:
@@ -34,9 +53,6 @@ def safe_parse_date(text, default_date):
         try: return date(default_date.year, default_date.month, day)
         except ValueError: pass
 
-    p = parse_date(text)
-    if p: return p
-    
     return default_date
 
 
@@ -69,7 +85,6 @@ def notify():
                 cursor.execute("SELECT value FROM settings WHERE key = 'line_user_id'")
                 row = cursor.fetchone()
                 if not row:
-                    print("Notify Error: line_user_id not found")
                     return "Error: No User ID", 200 
                 user_id = row['value']
 
@@ -105,11 +120,9 @@ def notify():
             ])
         
         line_bot_api.push_message(user_id, TextSendMessage(text=msg))
-        print(f"Notification Sent: {today_jst}")
         return "OK", 200
 
     except Exception as e:
-        print(f"NOTIFY CRASH: {e}")
         return f"Error: {e}", 200
 
 @app.route("/callback", methods=['POST'])
@@ -149,11 +162,12 @@ def handle_message(event):
 
     lines = user_msg.strip().split('\n')
 
-    # ==========================================
-    # A. 単一行の「照会・確認」コマンド
-    # ==========================================
     if len(lines) == 1:
         line0 = lines[0].strip()
+        
+        # 💡バージョン確認用の隠しコマンド
+        if line0 == "バージョン":
+            return line_bot_api.reply_message(event.reply_token, TextSendMessage(text="🚀 最新の「試験フィルター搭載・完全独立版」で稼働中です！"))
         
         # 試験のカウントダウン確認機能
         if "テスト" in line0 or "試験" in line0 or "CBT" in line0:
@@ -402,7 +416,7 @@ def handle_message(event):
                             replies.append(f"💰 単発登録! ({once_match.group(1)}円)")
                             continue
 
-                        # 💡究極の試験抽出フィルター（正規表現の壁を撤廃し、"試験"という文字で真っ二つに割る）
+                        # 💡究極の試験抽出フィルター
                         if "試験" in line and "追加" not in line and "削除" not in line:
                             parts = line.split("試験", 1)
                             subject = parts[0].strip()
